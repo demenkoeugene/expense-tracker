@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const expanseFile = "results/tasks.csv"
+const expanseFile = "results/expense.csv"
 
 func LoadExpanseList() ([]model.Expense, error) {
 	file, err := os.Open(expanseFile)
