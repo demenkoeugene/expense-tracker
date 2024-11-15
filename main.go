@@ -135,7 +135,6 @@ func handleAdd() {
 		return
 	}
 
-	// Перевірка на дублікат
 	for _, exp := range expenses {
 		if exp.Description == description && exp.Amount == amount {
 			fmt.Println("This expense already exists.")
