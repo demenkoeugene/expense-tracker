@@ -1,33 +1,43 @@
 package main
 
 import (
-	"expense-tracker/model"
 	"expense-tracker/services"
+	"expense-tracker/utils"
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
+
+type CommandHandler func()
+
+var commands = map[string]CommandHandler{
+	"add":     handleAdd,
+	"list":    handleList,
+	"summary": handleSummary,
+	"delete":  handleDelete,
+}
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Print("Usage: expense-tracker <command> [arguments]")
+		printUsage()
 		return
 	}
 
 	command := os.Args[1]
-	switch command {
-	case "add":
-		handleAdd()
-	case "list":
-		handleList()
-	case "summary":
-		handleSummary()
-	case "delete":
-		handleDelete()
-	default:
+	if handler, exists := commands[command]; exists {
+		handler()
+	} else {
 		fmt.Println("Unknown command")
+		printUsage()
 	}
+}
+
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("  expense-tracker add --description <description> --amount <amount>")
+	fmt.Println("  expense-tracker list")
+	fmt.Println("  expense-tracker summary [--month <month>]")
+	fmt.Println("  expense-tracker delete --id <id>")
 }
 
 func handleDelete() {
@@ -42,32 +52,8 @@ func handleDelete() {
 		return
 	}
 
-	expenses, err := services.LoadExpanseList()
-	if err != nil {
-		fmt.Println("Error loading expenses:", err)
-		return
-	}
-
-	var updatedExpenses []model.Expense
-	var deleted bool
-
-	for _, expense := range expenses {
-		if expense.ID == id {
-			fmt.Printf("Deleting expense (ID: %d)\n", expense.ID)
-			deleted = true
-			continue
-		}
-		updatedExpenses = append(updatedExpenses, expense)
-	}
-
-	if !deleted {
-		fmt.Printf("No expense found with ID: %d\n", id)
-		return
-	}
-
-	err = services.SaveExpenses(updatedExpenses)
-	if err != nil {
-		fmt.Println("Error saving updated expenses:", err)
+	if err := services.DeleteExpenseByID(id); err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -75,27 +61,14 @@ func handleDelete() {
 }
 
 func handleSummary() {
-	var month int
-	if len(os.Args) > 2 && os.Args[2] == "--month" {
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: expense-tracker summary --month <month>")
-			return
-		}
-		var err error
-		month, err = strconv.Atoi(os.Args[3])
-		if err != nil || month < 1 || month > 12 {
-			fmt.Println("Invalid month. Please enter a value between 1 and 12.")
-			return
-		}
-	}
-
-	expenses, err := services.LoadExpanseList()
+	month := services.ParseOptionalMonth()
+	expenses, err := utils.LoadExpanseList()
 	if err != nil {
 		fmt.Println("Error loading expenses:", err)
 		return
 	}
 
-	total := services.CalculateTotal(expenses, month)
+	total := utils.CalculateTotal(expenses, month)
 	if month > 0 {
 		fmt.Printf("Total expenses for month %d: $%.2f\n", month, total)
 	} else {
@@ -104,7 +77,7 @@ func handleSummary() {
 }
 
 func handleList() {
-	expenses, err := services.LoadExpanseList()
+	expenses, err := utils.LoadExpanseList()
 	if err != nil {
 		fmt.Println("Error loading expenses:", err)
 		return
@@ -129,31 +102,9 @@ func handleAdd() {
 		return
 	}
 
-	expenses, err := services.LoadExpanseList()
-	if err != nil {
-		fmt.Println("Error loading expenses:", err)
+	if err := services.AddExpense(description, amount); err != nil {
+		fmt.Println("Error adding expense:", err)
 		return
 	}
-
-	for _, exp := range expenses {
-		if exp.Description == description && exp.Amount == amount {
-			fmt.Println("This expense already exists.")
-			return
-		}
-	}
-
-	newExpense := model.Expense{
-		ID:          len(expenses) + 1,
-		Date:        time.Now(),
-		Description: description,
-		Amount:      amount,
-	}
-
-	expenses = append(expenses, newExpense)
-	err = services.SaveExpenses(expenses)
-	if err != nil {
-		fmt.Println("Error saving expenses:", err)
-		return
-	}
-	fmt.Printf("Expense added successfully (ID: %d)\n", newExpense.ID)
+	fmt.Println("Expense added successfully.")
 }

@@ -1,92 +1,74 @@
 package services
 
 import (
-	"encoding/csv"
+	"errors"
 	"expense-tracker/model"
+	"expense-tracker/utils"
 	"fmt"
 	"os"
 	"strconv"
 	"time"
 )
 
-const expanseFile = "results/expense.csv"
-
-func LoadExpanseList() ([]model.Expense, error) {
-	file, err := os.Open(expanseFile)
+func DeleteExpenseByID(id int) error {
+	expenses, err := utils.LoadExpanseList()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return []model.Expense{}, nil
-		}
-		return nil, err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
+		return fmt.Errorf("error loading expenses: %w", err)
 	}
 
-	var expenses []model.Expense
-	for _, record := range records {
-		id, _ := strconv.Atoi(record[0])
-		date, _ := time.Parse("2006-01-02", record[1])
-		amount, _ := strconv.ParseFloat(record[3], 64)
-		expenses = append(expenses, model.Expense{
-			ID:          id,
-			Date:        date,
-			Description: record[2],
-			Amount:      amount,
-		})
-	}
-	return expenses, nil
-}
+	var updatedExpenses []model.Expense
+	var deleted bool
 
-func ensureDir(dirName string) error {
-	if _, err := os.Stat(dirName); os.IsNotExist(err) {
-		err := os.MkdirAll(dirName, 0755)
-		if err != nil {
-			return fmt.Errorf("Error creating directory: %v", err)
-		}
-	}
-	return nil
-}
-
-func SaveExpenses(expenses []model.Expense) error {
-	err := ensureDir("results")
-	if err != nil {
-		fmt.Println("Error creating directory:", err)
-		return err
-	}
-
-	file, err := os.Create(expanseFile)
-	if err != nil {
-		fmt.Println("Error creating file:", err)
-		return err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-	for _, exp := range expenses {
-		record := []string{
-			strconv.Itoa(exp.ID),
-			exp.Date.Format("2006-01-02"),
-			exp.Description,
-			fmt.Sprintf("%.2f", exp.Amount),
-		}
-		writer.Write(record)
-	}
-	return nil
-}
-
-func CalculateTotal(expenses []model.Expense, month int) float64 {
-	var total float64
 	for _, expense := range expenses {
-		if month > 0 && expense.Date.Month() != time.Month(month) {
+		if expense.ID == id {
+			deleted = true
 			continue
 		}
-		total += expense.Amount
+		updatedExpenses = append(updatedExpenses, expense)
 	}
-	return total
+
+	if !deleted {
+		return errors.New(fmt.Sprintf("no expense found with ID: %d", id))
+	}
+
+	return utils.SaveExpenses(updatedExpenses)
+}
+
+func AddExpense(description string, amount float64) error {
+	expenses, err := utils.LoadExpanseList()
+	if err != nil {
+		return fmt.Errorf("error loading expenses: %w", err)
+	}
+
+	for _, exp := range expenses {
+		if exp.Description == description && exp.Amount == amount {
+			return errors.New("this expense already exists")
+		}
+	}
+
+	newExpense := model.Expense{
+		ID:          len(expenses) + 1,
+		Date:        time.Now(),
+		Description: description,
+		Amount:      amount,
+	}
+
+	expenses = append(expenses, newExpense)
+	return utils.SaveExpenses(expenses)
+}
+
+func ParseOptionalMonth() int {
+	if len(os.Args) > 2 && os.Args[2] == "--month" {
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: expense-tracker summary --month <month>")
+			os.Exit(1)
+		}
+		month, err := strconv.Atoi(os.Args[3])
+		if err != nil || month < 1 || month > 12 {
+			fmt.Println("Invalid month. Please enter a value between 1 and 12.")
+			os.Exit(1)
+		}
+		return month
+	}
+	return 0
 }
